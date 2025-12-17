@@ -9,6 +9,16 @@ import (
 	"github.com/joacominatel/pulse/internal/infrastructure/logging"
 )
 
+// TimeProvider abstracts time acquisition for testability.
+// inject a custom implementation to control time in tests.
+type TimeProvider func() time.Time
+
+// RealTime returns the current UTC time.
+// use this in production.
+func RealTime() time.Time {
+	return time.Now().UTC()
+}
+
 // MomentumConfig contains parameters for momentum calculation.
 type MomentumConfig struct {
 	// TimeWindow is the sliding window for counting activity.
@@ -48,6 +58,7 @@ type CalculateMomentumUseCase struct {
 	eventRepo     domain.ActivityEventRepository
 	communityRepo domain.CommunityRepository
 	config        MomentumConfig
+	timeProvider  TimeProvider
 	logger        *logging.Logger
 }
 
@@ -62,8 +73,15 @@ func NewCalculateMomentumUseCase(
 		eventRepo:     eventRepo,
 		communityRepo: communityRepo,
 		config:        config,
+		timeProvider:  RealTime,
 		logger:        logger.WithComponent("calculate_momentum"),
 	}
+}
+
+// WithTimeProvider sets a custom time provider for testing.
+func (uc *CalculateMomentumUseCase) WithTimeProvider(tp TimeProvider) *CalculateMomentumUseCase {
+	uc.timeProvider = tp
+	return uc
 }
 
 // Execute calculates and updates momentum for a community.
@@ -89,7 +107,10 @@ func (uc *CalculateMomentumUseCase) Execute(ctx context.Context, input Calculate
 	}
 
 	oldMomentum := community.CurrentMomentum().Value()
-	since := time.Now().UTC().Add(-uc.config.TimeWindow)
+
+	// use injected time provider for testability
+	now := uc.timeProvider()
+	since := now.Add(-uc.config.TimeWindow)
 
 	// get event count for logging context
 	eventCount, err := uc.eventRepo.CountByCommunity(ctx, communityID, since)
@@ -111,10 +132,9 @@ func (uc *CalculateMomentumUseCase) Execute(ctx context.Context, input Calculate
 		return nil, fmt.Errorf("summing weights: %w", err)
 	}
 
-	// apply decay factor based on time window
-	// simpler model: just use the weighted sum directly for now
-	// more sophisticated decay can be added later by fetching individual events
-	newMomentum := domain.NewMomentum(weightedSum * uc.config.DecayFactor)
+	// use pure domain function for momentum calculation
+	// using simpler model with pre-aggregated weights from db
+	newMomentum := domain.SimpleMomentum(weightedSum, uc.config.DecayFactor)
 
 	// update community momentum
 	if err := uc.communityRepo.UpdateMomentum(ctx, communityID, newMomentum); err != nil {
