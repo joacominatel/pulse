@@ -119,7 +119,12 @@ func (r *UserRepository) scanUser(ctx context.Context, query string, args ...any
 		return nil, fmt.Errorf("scanning user: %w", err)
 	}
 
-	userID, _ := domain.ParseUserID(id)
+	// database stores trusted data, but we still validate for safety
+	// if parsing fails, we have data corruption
+	userID, err := domain.ParseUserID(id)
+	if err != nil {
+		return nil, fmt.Errorf("corrupted user id in database: %w", err)
+	}
 
 	return domain.ReconstructUser(
 		userID,
@@ -293,8 +298,16 @@ func (r *CommunityRepository) scanCommunity(ctx context.Context, query string, a
 		return nil, fmt.Errorf("scanning community: %w", err)
 	}
 
-	communityID, _ := domain.ParseCommunityID(id)
-	creatorIDParsed, _ := domain.ParseUserID(creatorID)
+	// database stores trusted data, but we still validate for safety
+	communityID, err := domain.ParseCommunityID(id)
+	if err != nil {
+		return nil, fmt.Errorf("corrupted community id in database: %w", err)
+	}
+
+	creatorIDParsed, err := domain.ParseUserID(creatorID)
+	if err != nil {
+		return nil, fmt.Errorf("corrupted creator id in database: %w", err)
+	}
 
 	return domain.ReconstructCommunity(
 		communityID,
@@ -334,8 +347,16 @@ func (r *CommunityRepository) scanCommunityFromRows(rows pgx.Rows) (*domain.Comm
 		return nil, fmt.Errorf("scanning community row: %w", err)
 	}
 
-	communityID, _ := domain.ParseCommunityID(id)
-	creatorIDParsed, _ := domain.ParseUserID(creatorID)
+	// database stores trusted data, but we still validate for safety
+	communityID, err := domain.ParseCommunityID(id)
+	if err != nil {
+		return nil, fmt.Errorf("corrupted community id in database: %w", err)
+	}
+
+	creatorIDParsed, err := domain.ParseUserID(creatorID)
+	if err != nil {
+		return nil, fmt.Errorf("corrupted creator id in database: %w", err)
+	}
 
 	return domain.ReconstructCommunity(
 		communityID,
@@ -488,20 +509,41 @@ func (r *ActivityEventRepository) scanEvents(rows pgx.Rows) ([]*domain.ActivityE
 			return nil, fmt.Errorf("scanning event row: %w", err)
 		}
 
-		eventIDParsed, _ := domain.ParseEventID(id)
-		communityIDParsed, _ := domain.ParseCommunityID(communityID)
-		eventTypeParsed, _ := domain.ParseEventType(eventType)
-		weightParsed, _ := domain.NewWeight(weight)
+		// database stores trusted data, but we still validate for safety
+		eventIDParsed, err := domain.ParseEventID(id)
+		if err != nil {
+			return nil, fmt.Errorf("corrupted event id in database: %w", err)
+		}
+
+		communityIDParsed, err := domain.ParseCommunityID(communityID)
+		if err != nil {
+			return nil, fmt.Errorf("corrupted community id in database: %w", err)
+		}
+
+		eventTypeParsed, err := domain.ParseEventType(eventType)
+		if err != nil {
+			return nil, fmt.Errorf("corrupted event type in database: %w", err)
+		}
+
+		weightParsed, err := domain.NewWeight(weight)
+		if err != nil {
+			return nil, fmt.Errorf("corrupted weight in database: %w", err)
+		}
 
 		var userIDParsed *domain.UserID
 		if userID != nil {
-			parsed, _ := domain.ParseUserID(*userID)
+			parsed, err := domain.ParseUserID(*userID)
+			if err != nil {
+				return nil, fmt.Errorf("corrupted user id in database: %w", err)
+			}
 			userIDParsed = &parsed
 		}
 
 		var metadataMap map[string]any
 		if len(metadata) > 0 && string(metadata) != "null" {
-			_ = json.Unmarshal(metadata, &metadataMap)
+			if err := json.Unmarshal(metadata, &metadataMap); err != nil {
+				return nil, fmt.Errorf("corrupted metadata json in database: %w", err)
+			}
 		}
 
 		event := domain.ReconstructActivityEvent(
