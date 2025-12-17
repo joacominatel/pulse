@@ -1,0 +1,19 @@
+.vscode/
+.github/
+.env*
+!.env.example
+
+# golang
+bin/
+vendor/
+*.exe
+*.dll
+*.so
+*.dylib
+_DS_Store
+*.test
+
+# etc
+example*/
+*.log   
+*.out
