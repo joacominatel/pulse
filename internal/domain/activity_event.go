@@ -38,13 +38,22 @@ func NewActivityEvent(
 		return nil, ErrEventTypeEmpty
 	}
 
+	// defensive copy of metadata to prevent external mutation
+	var metadataCopy map[string]any
+	if metadata != nil {
+		metadataCopy = make(map[string]any, len(metadata))
+		for k, v := range metadata {
+			metadataCopy[k] = v
+		}
+	}
+
 	return &ActivityEvent{
 		id:          NewEventID(),
 		communityID: communityID,
 		userID:      userID,
 		eventType:   eventType,
 		weight:      weight,
-		metadata:    metadata,
+		metadata:    metadataCopy,
 		createdAt:   time.Now().UTC(),
 	}, nil
 }
@@ -61,6 +70,8 @@ func NewActivityEventWithDefaultWeight(
 
 // ReconstructActivityEvent recreates an ActivityEvent from stored data.
 // use this when loading from database, not for creating new events.
+// note: trusts the caller (typically repository) to provide valid data.
+// does NOT copy metadata since it comes from a trusted source (database).
 func ReconstructActivityEvent(
 	id EventID,
 	communityID CommunityID,
@@ -106,9 +117,19 @@ func (e *ActivityEvent) Weight() Weight {
 	return e.weight
 }
 
-// Metadata returns the event-specific metadata.
+// Metadata returns a copy of the event-specific metadata.
+// returns a defensive copy to prevent external mutation of internal state.
 func (e *ActivityEvent) Metadata() map[string]any {
-	return e.metadata
+	if e.metadata == nil {
+		return nil
+	}
+	// shallow copy is sufficient for typical metadata (strings, numbers)
+	// deep copy would be needed for nested structures, but we don't use those
+	copy := make(map[string]any, len(e.metadata))
+	for k, v := range e.metadata {
+		copy[k] = v
+	}
+	return copy
 }
 
 // CreatedAt returns when this event was created.
