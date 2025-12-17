@@ -386,9 +386,9 @@ func NewActivityEventRepository(pool *pgxpool.Pool) *ActivityEventRepository {
 // Save persists a new activity event.
 func (r *ActivityEventRepository) Save(ctx context.Context, event *domain.ActivityEvent) error {
 	const query = `
-		INSERT INTO pulse.activity_events (id, community_id, user_id, event_type, weight, metadata, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`
+        INSERT INTO pulse.activity_events (id, community_id, user_id, event_type, weight, metadata, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `
 
 	var userID any
 	if event.UserID() != nil {
@@ -406,7 +406,7 @@ func (r *ActivityEventRepository) Save(ctx context.Context, event *domain.Activi
 		userID,
 		event.EventType().String(),
 		event.Weight().Value(),
-		metadataJSON,
+		string(metadataJSON),
 		event.CreatedAt(),
 	)
 
