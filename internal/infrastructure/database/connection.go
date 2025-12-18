@@ -29,11 +29,15 @@ func New(cfg config.DatabaseConfig, logger *logging.Logger) (*Connection, error)
 		return nil, fmt.Errorf("parsing connection string: %w", err)
 	}
 
-	// sensible pool defaults
-	poolConfig.MaxConns = 10
-	poolConfig.MinConns = 2
+	// pool size tuned for high concurrency
+	// with 1000 concurrent requests, we need a larger pool
+	// but not 1:1 because requests are short-lived
+	poolConfig.MaxConns = 100
+	poolConfig.MinConns = 10
 	poolConfig.MaxConnLifetime = time.Hour
 	poolConfig.MaxConnIdleTime = 30 * time.Minute
+	// connection acquire timeout - fail fast if pool exhausted
+	poolConfig.HealthCheckPeriod = 30 * time.Second
 
 	// disable prepared statements for supabase transaction pooler (pgbouncer) compatibility
 	// pgbouncer in transaction mode doesn't support prepared statements because
