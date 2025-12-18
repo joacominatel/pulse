@@ -59,11 +59,19 @@ type LeaderboardUpdater interface {
 	UpdateLeaderboardScore(ctx context.Context, communityID string, momentum float64) error
 }
 
+// SpikeNotifier abstracts the notification layer for momentum spikes.
+// allows the use case to remain decoupled from webhook specifics.
+type SpikeNotifier interface {
+	NotifyMomentumSpike(ctx context.Context, spike domain.MomentumSpike) (int, error)
+	Thresholds() domain.MomentumSpikeThresholds
+}
+
 // CalculateMomentumUseCase handles momentum calculation for communities.
 type CalculateMomentumUseCase struct {
 	eventRepo     domain.ActivityEventRepository
 	communityRepo domain.CommunityRepository
 	leaderboard   LeaderboardUpdater
+	notifier      SpikeNotifier
 	config        MomentumConfig
 	timeProvider  TimeProvider
 	logger        *logging.Logger
@@ -95,6 +103,13 @@ func (uc *CalculateMomentumUseCase) WithTimeProvider(tp TimeProvider) *Calculate
 // when set, momentum updates are also pushed to the cache.
 func (uc *CalculateMomentumUseCase) WithLeaderboard(lb LeaderboardUpdater) *CalculateMomentumUseCase {
 	uc.leaderboard = lb
+	return uc
+}
+
+// WithNotifier sets the spike notifier (webhook dispatcher).
+// when set, momentum spikes trigger webhook notifications.
+func (uc *CalculateMomentumUseCase) WithNotifier(n SpikeNotifier) *CalculateMomentumUseCase {
+	uc.notifier = n
 	return uc
 }
 
@@ -173,6 +188,40 @@ func (uc *CalculateMomentumUseCase) Execute(ctx context.Context, input Calculate
 		}
 	}
 
+	// check for spike and notify (best-effort, don't fail on notification errors)
+	if uc.notifier != nil {
+		thresholds := uc.notifier.Thresholds()
+		if thresholds.IsSpike(oldMomentum, newMomentum.Value()) {
+			percentChange := 0.0
+			if oldMomentum > 0 {
+				percentChange = (newMomentum.Value() - oldMomentum) / oldMomentum
+			}
+
+			spike := domain.MomentumSpike{
+				CommunityID:   communityID,
+				CommunityName: community.Name(),
+				OldMomentum:   oldMomentum,
+				NewMomentum:   newMomentum.Value(),
+				PercentChange: percentChange,
+				Timestamp:     now,
+			}
+
+			if _, err := uc.notifier.NotifyMomentumSpike(ctx, spike); err != nil {
+				uc.logger.Warn("spike notification failed",
+					"community_id", communityID.String(),
+					"error", err.Error(),
+				)
+			} else {
+				uc.logger.Info("momentum spike detected",
+					"community_id", communityID.String(),
+					"old_momentum", oldMomentum,
+					"new_momentum", newMomentum.Value(),
+					"percent_change", percentChange,
+				)
+			}
+		}
+	}
+
 	uc.logger.Info("momentum calculated",
 		"community_id", communityID.String(),
 		"old_momentum", oldMomentum,
@@ -180,6 +229,7 @@ func (uc *CalculateMomentumUseCase) Execute(ctx context.Context, input Calculate
 		"event_count", eventCount,
 		"time_window", uc.config.TimeWindow.String(),
 		"leaderboard_enabled", uc.leaderboard != nil,
+		"notifier_enabled", uc.notifier != nil,
 		"outcome", "updated",
 	)
 
