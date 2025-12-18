@@ -12,6 +12,7 @@ import (
 // loaded from environment variables, no magic defaults for required fields.
 type Config struct {
 	Database DatabaseConfig
+	Auth     AuthConfig
 }
 
 // DatabaseConfig contains database connection parameters.
@@ -23,6 +24,12 @@ type DatabaseConfig struct {
 	Name     string
 	SSLMode  string
 	Schema   string
+}
+
+// AuthConfig contains authentication configuration.
+type AuthConfig struct {
+	// JWTSecret is the supabase jwt secret for token validation
+	JWTSecret string
 }
 
 // ConnectionString returns the postgres connection string.
@@ -50,9 +57,27 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("database config: %w", err)
 	}
 
+	authConfig, err := loadAuthConfig()
+	if err != nil {
+		return nil, fmt.Errorf("auth config: %w", err)
+	}
+
 	return &Config{
 		Database: dbConfig,
+		Auth:     authConfig,
 	}, nil
+}
+
+func loadAuthConfig() (AuthConfig, error) {
+	config := AuthConfig{
+		JWTSecret: os.Getenv("SUPABASE_JWT_SECRET"),
+	}
+
+	if config.JWTSecret == "" {
+		return config, errors.New("SUPABASE_JWT_SECRET is required")
+	}
+
+	return config, nil
 }
 
 func loadDatabaseConfig() (DatabaseConfig, error) {
