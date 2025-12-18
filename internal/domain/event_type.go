@@ -72,7 +72,10 @@ func (e EventType) DefaultWeight() Weight {
 	if w < 0 {
 		w = -w
 	}
-	weight, _ := NewWeight(w)
+	weight, err := NewWeight(w)
+	if err != nil {
+		return DefaultEventWeight()
+	}
 	return weight
 }
 

@@ -53,7 +53,10 @@ func TestActivityEvent_MetadataImmutability(t *testing.T) {
 	userID := NewUserID()
 	originalMetadata := map[string]any{"key": "original"}
 
-	event, _ := NewActivityEvent(communityID, &userID, EventTypePost, DefaultEventWeight(), originalMetadata)
+	event, err := NewActivityEvent(communityID, &userID, EventTypePost, DefaultEventWeight(), originalMetadata)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// modify original map after creation
 	originalMetadata["key"] = "modified"
@@ -74,7 +77,10 @@ func TestActivityEvent_MetadataGetterReturnsDefensiveCopy(t *testing.T) {
 	userID := NewUserID()
 	metadata := map[string]any{"key": "value"}
 
-	event, _ := NewActivityEvent(communityID, &userID, EventTypePost, DefaultEventWeight(), metadata)
+	event, err := NewActivityEvent(communityID, &userID, EventTypePost, DefaultEventWeight(), metadata)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// modify returned metadata
 	returned := event.Metadata()
@@ -109,8 +115,14 @@ func TestActivityEvent_MomentumContribution(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			weight, _ := NewWeight(tt.weight)
-			event, _ := NewActivityEvent(communityID, &userID, tt.eventType, weight, nil)
+			weight, err := NewWeight(tt.weight)
+			if err != nil {
+				t.Fatalf("unexpected error creating weight: %v", err)
+			}
+			event, err := NewActivityEvent(communityID, &userID, tt.eventType, weight, nil)
+			if err != nil {
+				t.Fatalf("unexpected error creating event: %v", err)
+			}
 
 			contribution := event.MomentumContribution()
 

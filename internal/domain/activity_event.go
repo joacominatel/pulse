@@ -125,11 +125,11 @@ func (e *ActivityEvent) Metadata() map[string]any {
 	}
 	// shallow copy is sufficient for typical metadata (strings, numbers)
 	// deep copy would be needed for nested structures, but we don't use those
-	copy := make(map[string]any, len(e.metadata))
+	result := make(map[string]any, len(e.metadata))
 	for k, v := range e.metadata {
-		copy[k] = v
+		result[k] = v
 	}
-	return copy
+	return result
 }
 
 // CreatedAt returns when this event was created.

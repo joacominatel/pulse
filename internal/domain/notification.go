@@ -140,7 +140,7 @@ type MomentumSpike struct {
 type NotificationService interface {
 	// NotifyMomentumSpike sends notifications when momentum crosses a threshold.
 	// returns the number of notifications sent.
-	NotifyMomentumSpike(ctx context.Context, spike MomentumSpike) (int, error)
+	NotifyMomentumSpike(ctx context.Context, spike *MomentumSpike) (int, error)
 }
 
 // MomentumSpikeThresholds defines when a spike is considered significant.
