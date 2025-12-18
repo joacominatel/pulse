@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -129,30 +128,6 @@ func (r *WebhookSubscriptionRepository) scanSubscriptions(rows pgx.Rows) ([]*dom
 	}
 
 	return subs, nil
-}
-
-// scanRow scans a single row into a WebhookSubscription.
-func (r *WebhookSubscriptionRepository) scanRow(row pgx.Row) (*domain.WebhookSubscription, error) {
-	var (
-		id          string
-		userID      string
-		communityID string
-		targetURL   string
-		secret      string
-		isActive    bool
-		createdAt   time.Time
-		updatedAt   time.Time
-	)
-
-	err := row.Scan(&id, &userID, &communityID, &targetURL, &secret, &isActive, &createdAt, &updatedAt)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.ErrNotFound
-		}
-		return nil, err
-	}
-
-	return r.buildSubscription(id, userID, communityID, targetURL, secret, isActive, createdAt, updatedAt)
 }
 
 // buildSubscription constructs a domain subscription from raw values.
