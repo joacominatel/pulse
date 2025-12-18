@@ -104,13 +104,18 @@ func run(logger *logging.Logger) error {
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	ingestionWorker.Start(workerCtx)
 
+	// initialize community existence cache for high-throughput ingestion
+	// caches community exists/active checks to avoid DB hits on every event
+	communityExistsCache := cache.NewCommunityExistsCache(postgresCommunityRepo, 1*time.Minute)
+
 	// initialize use cases
 	ingestEventUseCase := application.NewIngestEventUseCase(
 		eventRepo,
 		communityRepo,
 		userRepo,
 		logger,
-	).WithEventChannel(ingestionWorker.EventChannel()) // enable async mode
+	).WithEventChannel(ingestionWorker.EventChannel()). // enable async mode
+								WithCommunityChecker(communityExistsCache) // use cache for existence checks
 
 	calculateMomentumUseCase := application.NewCalculateMomentumUseCase(
 		eventRepo,
