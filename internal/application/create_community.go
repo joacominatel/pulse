@@ -129,7 +129,13 @@ func (uc *CreateCommunityUseCase) Execute(ctx context.Context, input CreateCommu
 
 	// set description if provided (uses UpdateDetails to preserve name)
 	if input.Description != "" {
-		_ = community.UpdateDetails(input.Name, input.Description, "")
+		if err := community.UpdateDetails(input.Name, input.Description, ""); err != nil {
+			uc.logger.Error("create community failed: update details error",
+				"slug", input.Slug,
+				"error", err.Error(),
+			)
+			return nil, fmt.Errorf("updating community details: %w", err)
+		}
 	}
 
 	// persist

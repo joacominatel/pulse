@@ -62,7 +62,7 @@ type LeaderboardUpdater interface {
 // SpikeNotifier abstracts the notification layer for momentum spikes.
 // allows the use case to remain decoupled from webhook specifics.
 type SpikeNotifier interface {
-	NotifyMomentumSpike(ctx context.Context, spike domain.MomentumSpike) (int, error)
+	NotifyMomentumSpike(ctx context.Context, spike *domain.MomentumSpike) (int, error)
 	Thresholds() domain.MomentumSpikeThresholds
 }
 
@@ -197,7 +197,7 @@ func (uc *CalculateMomentumUseCase) Execute(ctx context.Context, input Calculate
 				percentChange = (newMomentum.Value() - oldMomentum) / oldMomentum
 			}
 
-			spike := domain.MomentumSpike{
+			spike := &domain.MomentumSpike{
 				CommunityID:   communityID,
 				CommunityName: community.Name(),
 				OldMomentum:   oldMomentum,
