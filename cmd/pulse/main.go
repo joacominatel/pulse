@@ -9,10 +9,16 @@ import (
 
 	"github.com/joacominatel/pulse/internal/application"
 	"github.com/joacominatel/pulse/internal/infrastructure/api"
+	"github.com/joacominatel/pulse/internal/infrastructure/auth"
 	"github.com/joacominatel/pulse/internal/infrastructure/config"
 	"github.com/joacominatel/pulse/internal/infrastructure/database"
 	"github.com/joacominatel/pulse/internal/infrastructure/logging"
 	"github.com/joacominatel/pulse/internal/infrastructure/postgres"
+)
+
+const (
+	// momentumCalculationInterval is how often momentum is recalculated
+	momentumCalculationInterval = 5 * time.Minute
 )
 
 func main() {
@@ -56,6 +62,9 @@ func run(logger *logging.Logger) error {
 
 	logger.Info("pulse infrastructure ready", "schema", conn.Schema())
 
+	// initialize jwt validator
+	jwtValidator := auth.NewJWTValidator(cfg.Auth.JWTSecret)
+
 	// initialize repositories
 	pool := conn.Pool()
 	userRepo := postgres.NewUserRepository(pool)
@@ -89,8 +98,14 @@ func run(logger *logging.Logger) error {
 	api.RegisterRoutes(server.Echo(), api.RouterConfig{
 		IngestEventUseCase:       ingestEventUseCase,
 		CalculateMomentumUseCase: calculateMomentumUseCase,
+		CommunityRepo:            communityRepo,
+		JWTValidator:             jwtValidator,
 		Logger:                   logger,
 	})
+
+	// start background momentum worker
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	go runMomentumWorker(workerCtx, calculateMomentumUseCase, logger)
 
 	// start server in goroutine
 	go func() {
@@ -106,6 +121,9 @@ func run(logger *logging.Logger) error {
 
 	logger.Info("pulse shutting down")
 
+	// stop background worker
+	workerCancel()
+
 	// graceful shutdown
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), serverConfig.ShutdownTimeout)
 	defer shutdownCancel()
@@ -117,4 +135,50 @@ func run(logger *logging.Logger) error {
 
 	logger.Info("pulse shutdown complete")
 	return nil
+}
+
+// runMomentumWorker runs the momentum calculation in the background
+// every momentumCalculationInterval until context is cancelled
+func runMomentumWorker(ctx context.Context, useCase *application.CalculateMomentumUseCase, logger *logging.Logger) {
+	logger.Info("momentum worker started", "interval", momentumCalculationInterval.String())
+
+	ticker := time.NewTicker(momentumCalculationInterval)
+	defer ticker.Stop()
+
+	// run immediately on startup
+	runMomentumCalculation(ctx, useCase, logger)
+
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info("momentum worker stopping")
+			return
+		case <-ticker.C:
+			runMomentumCalculation(ctx, useCase, logger)
+		}
+	}
+}
+
+// runMomentumCalculation executes a single momentum calculation cycle
+func runMomentumCalculation(ctx context.Context, useCase *application.CalculateMomentumUseCase, logger *logging.Logger) {
+	start := time.Now()
+	result, err := useCase.ExecuteAll(ctx, application.CalculateAllInput{
+		Limit: 0, // process all communities
+	})
+	duration := time.Since(start)
+
+	if err != nil {
+		logger.Error("momentum calculation failed",
+			"error", err.Error(),
+			"duration_ms", duration.Milliseconds(),
+		)
+		return
+	}
+
+	logger.Info("momentum calculation completed",
+		"processed", result.Processed,
+		"succeeded", result.Succeeded,
+		"failed", result.Failed,
+		"duration_ms", duration.Milliseconds(),
+	)
 }
