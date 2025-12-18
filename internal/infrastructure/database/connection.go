@@ -15,12 +15,12 @@ import (
 // uses pgx for better performance and postgres-specific features.
 type Connection struct {
 	pool   *pgxpool.Pool
-	config config.DatabaseConfig
+	config *config.DatabaseConfig
 	logger *logging.Logger
 }
 
 // New creates a new database connection.
-func New(cfg config.DatabaseConfig, logger *logging.Logger) (*Connection, error) {
+func New(cfg *config.DatabaseConfig, logger *logging.Logger) (*Connection, error) {
 	componentLogger := logger.WithComponent("database")
 
 	poolConfig, err := pgxpool.ParseConfig(cfg.ConnectionString())

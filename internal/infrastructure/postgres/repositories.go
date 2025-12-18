@@ -481,7 +481,7 @@ func (r *ActivityEventRepository) SaveBatch(ctx context.Context, events []*domai
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// batch insert using CopyFrom for maximum efficiency
 	rows := make([][]any, len(events))

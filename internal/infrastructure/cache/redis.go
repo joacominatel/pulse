@@ -130,7 +130,7 @@ func (r *RedisClient) UpdateLeaderboardScore(ctx context.Context, communityID st
 
 // GetTopCommunities returns the top N community IDs ordered by momentum (descending).
 // returns community IDs only, use these to fetch full details from postgres.
-func (r *RedisClient) GetTopCommunities(ctx context.Context, limit int64, offset int64) ([]string, error) {
+func (r *RedisClient) GetTopCommunities(ctx context.Context, limit, offset int64) ([]string, error) {
 	if r.client == nil {
 		return nil, ErrRedisNotConnected
 	}
@@ -164,7 +164,7 @@ func (r *RedisClient) GetTopCommunities(ctx context.Context, limit int64, offset
 
 // GetTopCommunitiesWithScores returns top N community IDs with their momentum scores.
 // useful for debugging or when you need both values.
-func (r *RedisClient) GetTopCommunitiesWithScores(ctx context.Context, limit int64, offset int64) ([]redis.Z, error) {
+func (r *RedisClient) GetTopCommunitiesWithScores(ctx context.Context, limit, offset int64) ([]redis.Z, error) {
 	if r.client == nil {
 		return nil, ErrRedisNotConnected
 	}
