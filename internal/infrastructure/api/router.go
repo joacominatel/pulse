@@ -17,6 +17,7 @@ type RouterConfig struct {
 	CalculateMomentumUseCase *application.CalculateMomentumUseCase
 	CreateCommunityUseCase   *application.CreateCommunityUseCase
 	CommunityRepo            domain.CommunityRepository
+	WebhookSubscriptionRepo  domain.WebhookSubscriptionRepository
 	JWTValidator             *auth.JWTValidator
 	Logger                   *logging.Logger
 	Metrics                  *metrics.Metrics
@@ -24,7 +25,7 @@ type RouterConfig struct {
 
 // RegisterRoutes sets up all API routes on the server.
 // follows RESTful conventions and groups routes logically.
-func RegisterRoutes(e *echo.Echo, config RouterConfig) {
+func RegisterRoutes(e *echo.Echo, config *RouterConfig) {
 	// prometheus metrics endpoint (no auth, standard scraping path)
 	if config.Metrics != nil {
 		e.GET("/metrics", echo.WrapHandler(promhttp.HandlerFor(
@@ -72,6 +73,12 @@ func RegisterRoutes(e *echo.Echo, config RouterConfig) {
 	if config.CommunityRepo != nil {
 		communityHandler := NewCommunityHandler(config.CommunityRepo, config.CreateCommunityUseCase)
 		communityHandler.RegisterRoutes(v1)
+	}
+
+	// subscription routes (protected - require auth)
+	if config.WebhookSubscriptionRepo != nil {
+		subscriptionHandler := NewSubscriptionHandler(config.WebhookSubscriptionRepo)
+		subscriptionHandler.RegisterRoutes(v1)
 	}
 
 	metricsEnabled := config.Metrics != nil
