@@ -40,7 +40,7 @@ type AuthConfig struct {
 }
 
 // ConnectionString returns the postgres connection string.
-func (c DatabaseConfig) ConnectionString() string {
+func (c *DatabaseConfig) ConnectionString() string {
 	return fmt.Sprintf(
 		"postgres://%s:%s@%s:%s/%s?sslmode=%s&search_path=%s",
 		c.User,
