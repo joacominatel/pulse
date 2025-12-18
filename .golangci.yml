@@ -1,0 +1,82 @@
+# golangci-lint configuration for strict enforcement
+# https://golangci-lint.run/usage/configuration/
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    # catch common mistakes
+    - errcheck        # unchecked errors
+    - ineffassign     # assignments to unused variables
+    - unused          # unused code
+    - staticcheck     # advanced static analysis
+    - govet           # built-in vet checks
+    
+    # code quality
+    - gosimple        # simplify code
+    - gocritic        # opinionated linter
+    - revive          # replacement for golint
+    
+    # security
+    - gosec           # security issues
+    
+    # formatting
+    - gofmt           # format check
+    - goimports       # import ordering
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+    exclude-functions:
+      # common functions where error return is often ignored intentionally
+      - (io.Closer).Close
+      - (*os.File).Close
+      - (net.Conn).Close
+
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+
+  revive:
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: error-return
+      - name: error-strings
+      - name: errorf
+      - name: increment-decrement
+      - name: var-declaration
+      - name: unexported-return
+
+  gosec:
+    excludes:
+      - G104  # audit errors not checked (we use errcheck for this)
+
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 5
+  
+  exclude-rules:
+    # allow unused parameters in test files
+    - path: _test\.go
+      linters:
+        - unused
+    
+    # allow magic numbers in tests
+    - path: _test\.go
+      linters:
+        - gocritic
+      text: "magic"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
