@@ -14,6 +14,7 @@ import (
 	"github.com/joacominatel/pulse/internal/infrastructure/database"
 	"github.com/joacominatel/pulse/internal/infrastructure/logging"
 	"github.com/joacominatel/pulse/internal/infrastructure/postgres"
+	"github.com/joacominatel/pulse/internal/infrastructure/worker"
 )
 
 const (
@@ -71,13 +72,21 @@ func run(logger *logging.Logger) error {
 	communityRepo := postgres.NewCommunityRepository(pool)
 	eventRepo := postgres.NewActivityEventRepository(pool)
 
+	// initialize event ingestion worker (async buffer pattern)
+	ingestionWorkerConfig := worker.DefaultEventIngestionConfig()
+	ingestionWorker := worker.NewEventIngestionWorker(eventRepo, ingestionWorkerConfig, logger)
+
+	// start the ingestion worker before accepting requests
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	ingestionWorker.Start(workerCtx)
+
 	// initialize use cases
 	ingestEventUseCase := application.NewIngestEventUseCase(
 		eventRepo,
 		communityRepo,
 		userRepo,
 		logger,
-	)
+	).WithEventChannel(ingestionWorker.EventChannel()) // enable async mode
 
 	calculateMomentumUseCase := application.NewCalculateMomentumUseCase(
 		eventRepo,
@@ -111,7 +120,6 @@ func run(logger *logging.Logger) error {
 	})
 
 	// start background momentum worker
-	workerCtx, workerCancel := context.WithCancel(context.Background())
 	go runMomentumWorker(workerCtx, calculateMomentumUseCase, logger)
 
 	// start server in goroutine
@@ -128,8 +136,11 @@ func run(logger *logging.Logger) error {
 
 	logger.Info("pulse shutting down")
 
-	// stop background worker
+	// stop background workers
 	workerCancel()
+
+	// stop ingestion worker and drain buffer
+	ingestionWorker.Stop()
 
 	// graceful shutdown
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), serverConfig.ShutdownTimeout)
