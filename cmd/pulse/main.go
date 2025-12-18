@@ -94,7 +94,7 @@ func run(logger *logging.Logger) error {
 			logger.Warn("redis connection failed, continuing without cache", "error", err.Error())
 			redisClient = nil
 		} else {
-			defer redisClient.Close()
+			defer func() { _ = redisClient.Close() }()
 			// wrap community repo with redis cache for reads
 			communityRepo = cache.NewCommunityRepositoryWithCache(postgresCommunityRepo, redisClient, logger)
 			logger.Info("redis leaderboard cache enabled")
