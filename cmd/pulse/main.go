@@ -110,6 +110,14 @@ func run(logger *logging.Logger) error {
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	ingestionWorker.Start(workerCtx)
 
+	// initialize webhook subscription repository
+	webhookSubRepo := postgres.NewWebhookSubscriptionRepository(pool)
+
+	// initialize webhook worker for momentum spike notifications
+	webhookWorkerConfig := worker.DefaultWebhookWorkerConfig()
+	webhookWorker := worker.NewWebhookWorker(webhookSubRepo, webhookWorkerConfig, logger)
+	webhookWorker.Start(workerCtx)
+
 	// initialize community existence cache for high-throughput ingestion
 	// caches community exists/active checks to avoid DB hits on every event
 	communityExistsCache := cache.NewCommunityExistsCache(postgresCommunityRepo, 1*time.Minute)
@@ -128,7 +136,7 @@ func run(logger *logging.Logger) error {
 		communityRepo,
 		application.DefaultMomentumConfig(),
 		logger,
-	)
+	).WithNotifier(webhookWorker) // wire spike notifications
 
 	// wire redis leaderboard to momentum use case if available
 	if redisClient != nil {
@@ -182,6 +190,9 @@ func run(logger *logging.Logger) error {
 
 	// stop ingestion worker and drain buffer
 	ingestionWorker.Stop()
+
+	// stop webhook worker and drain buffer
+	webhookWorker.Stop()
 
 	// graceful shutdown
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), serverConfig.ShutdownTimeout)
