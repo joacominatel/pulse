@@ -13,6 +13,13 @@ import (
 type Config struct {
 	Database DatabaseConfig
 	Auth     AuthConfig
+	Redis    RedisConfig
+}
+
+// RedisConfig contains Redis connection parameters.
+// optional - if URL is empty, Redis caching is disabled.
+type RedisConfig struct {
+	URL string
 }
 
 // DatabaseConfig contains database connection parameters.
@@ -62,9 +69,12 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("auth config: %w", err)
 	}
 
+	redisConfig := loadRedisConfig()
+
 	return &Config{
 		Database: dbConfig,
 		Auth:     authConfig,
+		Redis:    redisConfig,
 	}, nil
 }
 
@@ -110,4 +120,12 @@ func getEnvOrDefault(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// loadRedisConfig loads optional Redis configuration.
+// not required - if URL is empty, redis caching is disabled.
+func loadRedisConfig() RedisConfig {
+	return RedisConfig{
+		URL: os.Getenv("REDIS_URL"),
+	}
 }
