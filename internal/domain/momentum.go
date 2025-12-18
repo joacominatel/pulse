@@ -58,7 +58,7 @@ type MomentumResult struct {
 // example with decay_factor=0.7:
 // - event at window_end (age_ratio=0): contribution = weight * 1.0
 // - event at window_start (age_ratio=1): contribution = weight * 0.7
-func CalculateMomentum(input MomentumInput) MomentumResult {
+func CalculateMomentum(input *MomentumInput) MomentumResult {
 	if len(input.Events) == 0 {
 		return MomentumResult{
 			Score:          NewMomentum(0),
@@ -123,6 +123,6 @@ func CalculateMomentum(input MomentumInput) MomentumResult {
 //
 // formula: momentum = weighted_sum * decay_factor
 // where weighted_sum accounts for positive and negative event types.
-func SimpleMomentum(weightedSum float64, decayFactor float64) Momentum {
+func SimpleMomentum(weightedSum, decayFactor float64) Momentum {
 	return NewMomentum(weightedSum * decayFactor)
 }

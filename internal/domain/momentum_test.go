@@ -13,7 +13,7 @@ func TestCalculateMomentum_EmptyEvents(t *testing.T) {
 		DecayFactor: 0.7,
 	}
 
-	result := CalculateMomentum(input)
+	result := CalculateMomentum(&input)
 
 	if result.Score.Value() != 0 {
 		t.Errorf("expected score 0, got %f", result.Score.Value())
@@ -34,7 +34,7 @@ func TestCalculateMomentum_SingleEventAtWindowEnd(t *testing.T) {
 		DecayFactor: 0.7,
 	}
 
-	result := CalculateMomentum(input)
+	result := CalculateMomentum(&input)
 
 	// event at window end should have no decay (multiplier = 1.0)
 	if result.Score.Value() != 1.0 {
@@ -54,7 +54,7 @@ func TestCalculateMomentum_SingleEventAtWindowStart(t *testing.T) {
 		DecayFactor: 0.7,
 	}
 
-	result := CalculateMomentum(input)
+	result := CalculateMomentum(&input)
 
 	// event at window start should have full decay (multiplier = 0.7)
 	expected := 0.7
@@ -76,7 +76,7 @@ func TestCalculateMomentum_EventAtWindowMidpoint(t *testing.T) {
 		DecayFactor: 0.7,
 	}
 
-	result := CalculateMomentum(input)
+	result := CalculateMomentum(&input)
 
 	// at midpoint, age_ratio = 0.5, so multiplier = 1 - 0.5*(1-0.7) = 0.85
 	expected := 0.85
@@ -98,9 +98,9 @@ func TestCalculateMomentum_NegativeEventSubtracts(t *testing.T) {
 		DecayFactor: 1.0, // no decay for simplicity
 	}
 
-	result := CalculateMomentum(input)
+	result := CalculateMomentum(&input)
 
-	// 2.0 - 1.0 = 1.0
+	// expected: 2.0 - 1.0 = 1.0
 	if result.Score.Value() != 1.0 {
 		t.Errorf("expected score 1.0, got %f", result.Score.Value())
 	}
@@ -118,7 +118,7 @@ func TestCalculateMomentum_ClampedToZero(t *testing.T) {
 		DecayFactor: 1.0,
 	}
 
-	result := CalculateMomentum(input)
+	result := CalculateMomentum(&input)
 
 	// 1.0 - 5.0 = -4.0, clamped to 0
 	if result.Score.Value() != 0 {
@@ -141,7 +141,7 @@ func TestCalculateMomentum_InvalidWindowReturnsZero(t *testing.T) {
 		DecayFactor: 0.7,
 	}
 
-	result := CalculateMomentum(input)
+	result := CalculateMomentum(&input)
 
 	if result.Score.Value() != 0 {
 		t.Errorf("expected score 0 for invalid window, got %f", result.Score.Value())
