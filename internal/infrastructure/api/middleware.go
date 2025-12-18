@@ -1,50 +1,42 @@
 package api
 
 import (
-	"strings"
+	"errors"
 
 	"github.com/labstack/echo/v4"
+
+	"github.com/joacominatel/pulse/internal/infrastructure/auth"
 )
 
 // contextKey is a custom type for context keys to avoid collisions.
 type contextKey string
 
 const (
-	// UserContextKey is the context key for the authenticated user's external ID.
+	// UserContextKey is the context key for the authenticated user's external ID (sub claim).
 	UserContextKey contextKey = "user_external_id"
+
+	// ClaimsContextKey is the context key for the full JWT claims.
+	ClaimsContextKey contextKey = "jwt_claims"
 )
 
 // AuthConfig holds authentication middleware configuration.
 type AuthConfig struct {
-	// HeaderName is the header to extract the external ID from.
-	// defaults to "X-User-External-ID" for the placeholder implementation.
-	HeaderName string
+	// JWTValidator is the validator for supabase JWT tokens.
+	JWTValidator *auth.JWTValidator
 
 	// Skipper defines a function to skip auth for certain routes.
 	Skipper func(c echo.Context) bool
 }
 
-// DefaultAuthConfig returns the default auth configuration.
-func DefaultAuthConfig() AuthConfig {
-	return AuthConfig{
-		HeaderName: "X-User-External-ID",
-		Skipper:    nil,
-	}
-}
-
-// AuthMiddleware creates a placeholder authentication middleware.
-// in production, this would validate JWT tokens or integrate with an auth provider.
-// for now, it extracts the external user ID from a header.
+// AuthMiddleware creates a JWT authentication middleware using supabase tokens.
+// validates the Authorization header (Bearer token) and extracts user claims.
 //
-// placeholder behavior:
-// - extracts external_id from the configured header
-// - stores it in context for downstream handlers
-// - returns 401 if header is missing on protected routes
+// behavior:
+// - extracts JWT from Authorization header
+// - validates signature and expiration
+// - stores user_id (sub claim) and full claims in context
+// - returns 401 if token is missing or invalid on protected routes
 func AuthMiddleware(config AuthConfig) echo.MiddlewareFunc {
-	if config.HeaderName == "" {
-		config.HeaderName = DefaultAuthConfig().HeaderName
-	}
-
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			// check if we should skip auth for this route
@@ -52,14 +44,15 @@ func AuthMiddleware(config AuthConfig) echo.MiddlewareFunc {
 				return next(c)
 			}
 
-			// extract external ID from header
-			externalID := strings.TrimSpace(c.Request().Header.Get(config.HeaderName))
-			if externalID == "" {
-				return echo.NewHTTPError(401, "missing authentication: "+config.HeaderName+" header required")
+			// extract and validate JWT
+			claims, err := validateRequest(c, config.JWTValidator)
+			if err != nil {
+				return mapAuthError(err)
 			}
 
 			// store in context for downstream handlers
-			c.Set(string(UserContextKey), externalID)
+			c.Set(string(UserContextKey), claims.UserID())
+			c.Set(string(ClaimsContextKey), claims)
 
 			return next(c)
 		}
@@ -69,20 +62,47 @@ func AuthMiddleware(config AuthConfig) echo.MiddlewareFunc {
 // OptionalAuthMiddleware extracts user context if present but doesn't require it.
 // useful for endpoints that work for both authenticated and anonymous users.
 func OptionalAuthMiddleware(config AuthConfig) echo.MiddlewareFunc {
-	if config.HeaderName == "" {
-		config.HeaderName = DefaultAuthConfig().HeaderName
-	}
-
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// extract external ID from header if present
-			externalID := strings.TrimSpace(c.Request().Header.Get(config.HeaderName))
-			if externalID != "" {
-				c.Set(string(UserContextKey), externalID)
+			// try to validate JWT if present
+			claims, err := validateRequest(c, config.JWTValidator)
+			if err == nil && claims != nil {
+				c.Set(string(UserContextKey), claims.UserID())
+				c.Set(string(ClaimsContextKey), claims)
 			}
-
+			// continue regardless of auth status
 			return next(c)
 		}
+	}
+}
+
+// validateRequest extracts and validates the JWT from the request
+func validateRequest(c echo.Context, validator *auth.JWTValidator) (*auth.SupabaseClaims, error) {
+	if validator == nil {
+		return nil, auth.ErrMissingToken
+	}
+
+	authHeader := c.Request().Header.Get("Authorization")
+	token := auth.ExtractBearerToken(authHeader)
+
+	return validator.ValidateToken(token)
+}
+
+// mapAuthError converts auth errors to appropriate HTTP errors
+func mapAuthError(err error) *echo.HTTPError {
+	switch {
+	case errors.Is(err, auth.ErrMissingToken):
+		return echo.NewHTTPError(401, "missing authentication: Authorization header required")
+	case errors.Is(err, auth.ErrTokenExpired):
+		return echo.NewHTTPError(401, "token expired")
+	case errors.Is(err, auth.ErrInvalidSignature):
+		return echo.NewHTTPError(401, "invalid token signature")
+	case errors.Is(err, auth.ErrInvalidToken):
+		return echo.NewHTTPError(401, "invalid token format")
+	case errors.Is(err, auth.ErrInvalidClaims):
+		return echo.NewHTTPError(401, "invalid token claims")
+	default:
+		return echo.NewHTTPError(401, "authentication failed")
 	}
 }
 
@@ -95,6 +115,17 @@ func GetUserExternalID(c echo.Context) string {
 		}
 	}
 	return ""
+}
+
+// GetClaims retrieves the full JWT claims from context.
+// returns nil if not authenticated.
+func GetClaims(c echo.Context) *auth.SupabaseClaims {
+	if val := c.Get(string(ClaimsContextKey)); val != nil {
+		if claims, ok := val.(*auth.SupabaseClaims); ok {
+			return claims
+		}
+	}
+	return nil
 }
 
 // PublicRoutesSkipper returns a skipper function that skips auth for public routes.
