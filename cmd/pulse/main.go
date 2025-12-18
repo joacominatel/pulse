@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/joacominatel/pulse/internal/application"
+	"github.com/joacominatel/pulse/internal/domain"
 	"github.com/joacominatel/pulse/internal/infrastructure/api"
 	"github.com/joacominatel/pulse/internal/infrastructure/auth"
+	"github.com/joacominatel/pulse/internal/infrastructure/cache"
 	"github.com/joacominatel/pulse/internal/infrastructure/config"
 	"github.com/joacominatel/pulse/internal/infrastructure/database"
 	"github.com/joacominatel/pulse/internal/infrastructure/logging"
@@ -69,8 +71,30 @@ func run(logger *logging.Logger) error {
 	// initialize repositories
 	pool := conn.Pool()
 	userRepo := postgres.NewUserRepository(pool)
-	communityRepo := postgres.NewCommunityRepository(pool)
+	postgresCommunityRepo := postgres.NewCommunityRepository(pool)
 	eventRepo := postgres.NewActivityEventRepository(pool)
+
+	// initialize redis (optional - disabled if REDIS_URL is empty)
+	var redisClient *cache.RedisClient
+	var communityRepo domain.CommunityRepository = postgresCommunityRepo
+
+	if cfg.Redis.URL != "" {
+		redisClient, err = cache.NewRedisClient(cache.RedisConfig{URL: cfg.Redis.URL}, logger)
+		if err != nil {
+			logger.Error("failed to create redis client", "error", err.Error())
+			return err
+		}
+
+		if err := redisClient.Connect(ctx); err != nil {
+			logger.Warn("redis connection failed, continuing without cache", "error", err.Error())
+			redisClient = nil
+		} else {
+			defer redisClient.Close()
+			// wrap community repo with redis cache for reads
+			communityRepo = cache.NewCommunityRepositoryWithCache(postgresCommunityRepo, redisClient, logger)
+			logger.Info("redis leaderboard cache enabled")
+		}
+	}
 
 	// initialize event ingestion worker (async buffer pattern)
 	ingestionWorkerConfig := worker.DefaultEventIngestionConfig()
@@ -94,6 +118,11 @@ func run(logger *logging.Logger) error {
 		application.DefaultMomentumConfig(),
 		logger,
 	)
+
+	// wire redis leaderboard to momentum use case if available
+	if redisClient != nil {
+		calculateMomentumUseCase = calculateMomentumUseCase.WithLeaderboard(redisClient)
+	}
 
 	createCommunityUseCase := application.NewCreateCommunityUseCase(
 		communityRepo,
