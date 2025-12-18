@@ -125,7 +125,7 @@ func (v *JWTValidator) ValidateToken(tokenString string) (*SupabaseClaims, error
 	}
 
 	// check expiration manually as extra safety
-	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
+	if claims.ExpiresAt != nil && claims.ExpiresAt.Before(time.Now()) {
 		return nil, ErrTokenExpired
 	}
 
