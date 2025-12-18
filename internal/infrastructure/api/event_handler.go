@@ -108,6 +108,8 @@ func mapDomainError(err error) error {
 		return echo.NewHTTPError(http.StatusNotFound, err.Error())
 	case isValidationError(err):
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	case isOverloadError(err):
+		return echo.NewHTTPError(http.StatusServiceUnavailable, err.Error())
 	default:
 		return echo.NewHTTPError(http.StatusInternalServerError, "internal server error")
 	}
@@ -134,6 +136,15 @@ func isValidationError(err error) bool {
 	}
 	errMsg := err.Error()
 	return contains(errMsg, "invalid") || contains(errMsg, "required")
+}
+
+// isOverloadError checks if the error indicates the system is overloaded.
+func isOverloadError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errMsg := err.Error()
+	return contains(errMsg, "buffer full") || contains(errMsg, "try again later")
 }
 
 // contains checks if s contains substr (case-sensitive).
