@@ -50,11 +50,13 @@ func NewRedisClient(cfg RedisConfig, logger *logging.Logger) (*RedisClient, erro
 		return nil, fmt.Errorf("parsing redis url: %w", err)
 	}
 
-	// sensible defaults for connection pool
+	// pool size tuned for high concurrency
+	// redis is fast, but we need enough connections for parallel reads
 	opts.DialTimeout = defaultConnectTimeout
 	opts.ReadTimeout = 3 * time.Second
 	opts.WriteTimeout = 3 * time.Second
-	opts.PoolSize = 10
+	opts.PoolSize = 100
+	opts.MinIdleConns = 10
 
 	client := redis.NewClient(opts)
 
