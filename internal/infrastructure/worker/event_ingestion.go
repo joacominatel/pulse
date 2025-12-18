@@ -28,10 +28,10 @@ type EventIngestionWorkerConfig struct {
 // DefaultEventIngestionConfig returns sensible defaults for the worker.
 func DefaultEventIngestionConfig() EventIngestionWorkerConfig {
 	return EventIngestionWorkerConfig{
-		BufferSize:    1000,
-		BatchSize:     50,
-		FlushInterval: 1 * time.Second,
-		WorkerCount:   2,
+		BufferSize:    10000, // support high burst traffic
+		BatchSize:     100,   // larger batches for efficiency
+		FlushInterval: 500 * time.Millisecond,
+		WorkerCount:   4, // more workers for parallel DB writes
 	}
 }
 
@@ -165,29 +165,24 @@ func (w *EventIngestionWorker) flushBatch(ctx context.Context, batch []*domain.A
 	}
 
 	start := time.Now()
-	var succeeded, failed int
 
-	// save events one by one (could be optimized with bulk insert later)
-	for _, event := range batch {
-		if err := w.repo.Save(ctx, event); err != nil {
-			failed++
-			w.logger.Error("failed to save event",
-				"event_id", event.ID().String(),
-				"community_id", event.CommunityID().String(),
-				"error", err.Error(),
-			)
-		} else {
-			succeeded++
-		}
-	}
-
+	// use bulk insert for efficiency
+	err := w.repo.SaveBatch(ctx, batch)
 	duration := time.Since(start)
+
+	if err != nil {
+		w.logger.Error("batch save failed",
+			"worker_id", workerID,
+			"batch_size", len(batch),
+			"error", err.Error(),
+			"duration_ms", duration.Milliseconds(),
+		)
+		return
+	}
 
 	w.logger.Debug("batch flushed",
 		"worker_id", workerID,
 		"batch_size", len(batch),
-		"succeeded", succeeded,
-		"failed", failed,
 		"duration_ms", duration.Milliseconds(),
 	)
 }
