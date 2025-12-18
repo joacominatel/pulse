@@ -48,7 +48,7 @@ func (l *Logger) WithComponent(name string) *Logger {
 }
 
 // Database logs a successful database connection.
-func (l *Logger) DatabaseConnected(host string, database string) {
+func (l *Logger) DatabaseConnected(host, database string) {
 	l.Info("database connection established",
 		"host", host,
 		"database", database,
@@ -68,7 +68,7 @@ func (l *Logger) MigrationStarted() {
 }
 
 // MigrationApplied logs a successfully applied migration.
-func (l *Logger) MigrationApplied(version string, name string) {
+func (l *Logger) MigrationApplied(version, name string) {
 	l.Info("migration applied",
 		"version", version,
 		"name", name,
@@ -76,7 +76,7 @@ func (l *Logger) MigrationApplied(version string, name string) {
 }
 
 // MigrationSkipped logs when a migration was already applied.
-func (l *Logger) MigrationSkipped(version string, name string) {
+func (l *Logger) MigrationSkipped(version, name string) {
 	l.Debug("migration already applied, skipping",
 		"version", version,
 		"name", name,
@@ -91,7 +91,7 @@ func (l *Logger) MigrationCompleted(count int) {
 }
 
 // MigrationFailed logs a migration failure.
-func (l *Logger) MigrationFailed(version string, name string, err error) {
+func (l *Logger) MigrationFailed(version, name string, err error) {
 	l.Error("migration failed",
 		"version", version,
 		"name", name,
