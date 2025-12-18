@@ -2,11 +2,13 @@ package api
 
 import (
 	"github.com/labstack/echo/v4"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/joacominatel/pulse/internal/application"
 	"github.com/joacominatel/pulse/internal/domain"
 	"github.com/joacominatel/pulse/internal/infrastructure/auth"
 	"github.com/joacominatel/pulse/internal/infrastructure/logging"
+	"github.com/joacominatel/pulse/internal/infrastructure/metrics"
 )
 
 // RouterConfig holds dependencies for route registration.
@@ -17,11 +19,26 @@ type RouterConfig struct {
 	CommunityRepo            domain.CommunityRepository
 	JWTValidator             *auth.JWTValidator
 	Logger                   *logging.Logger
+	Metrics                  *metrics.Metrics
 }
 
 // RegisterRoutes sets up all API routes on the server.
 // follows RESTful conventions and groups routes logically.
 func RegisterRoutes(e *echo.Echo, config RouterConfig) {
+	// prometheus metrics endpoint (no auth, standard scraping path)
+	if config.Metrics != nil {
+		e.GET("/metrics", echo.WrapHandler(promhttp.HandlerFor(
+			config.Metrics.Registry,
+			promhttp.HandlerOpts{
+				Registry:          config.Metrics.Registry,
+				EnableOpenMetrics: true,
+			},
+		)))
+
+		// apply metrics middleware to all routes
+		e.Use(metrics.Middleware(config.Metrics))
+	}
+
 	// health endpoints (no auth required)
 	RegisterHealthRoutes(e)
 
@@ -57,9 +74,11 @@ func RegisterRoutes(e *echo.Echo, config RouterConfig) {
 		communityHandler.RegisterRoutes(v1)
 	}
 
+	metricsEnabled := config.Metrics != nil
 	config.Logger.Info("api routes registered",
 		"version", "v1",
 		"health_endpoints", []string{"/health", "/ready"},
+		"metrics_enabled", metricsEnabled,
 		"api_prefix", "/api/v1",
 	)
 }
