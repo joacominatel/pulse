@@ -69,10 +69,8 @@ func TestEventType_Validation(t *testing.T) {
 				if !eventType.IsValid() {
 					t.Error("expected event type to be valid")
 				}
-			} else {
-				if err == nil {
-					t.Error("expected error for invalid event type")
-				}
+			} else if err == nil {
+				t.Error("expected error for invalid event type")
 			}
 		})
 	}
