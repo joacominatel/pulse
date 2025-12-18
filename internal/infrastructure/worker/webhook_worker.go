@@ -44,7 +44,7 @@ func DefaultWebhookWorkerConfig() WebhookWorkerConfig {
 // WebhookWorker dispatches webhook notifications for momentum spikes.
 // implements domain.NotificationService.
 type WebhookWorker struct {
-	spikeChan  chan domain.MomentumSpike
+	spikeChan  chan *domain.MomentumSpike
 	subRepo    domain.WebhookSubscriptionRepository
 	httpClient *http.Client
 	config     WebhookWorkerConfig
@@ -62,7 +62,7 @@ func NewWebhookWorker(
 	logger *logging.Logger,
 ) *WebhookWorker {
 	return &WebhookWorker{
-		spikeChan: make(chan domain.MomentumSpike, config.BufferSize),
+		spikeChan: make(chan *domain.MomentumSpike, config.BufferSize),
 		subRepo:   subRepo,
 		httpClient: &http.Client{
 			Timeout: config.RequestTimeout,
@@ -105,7 +105,7 @@ func (w *WebhookWorker) Stopped() <-chan struct{} {
 
 // NotifyMomentumSpike queues a momentum spike for notification.
 // implements domain.NotificationService.
-func (w *WebhookWorker) NotifyMomentumSpike(ctx context.Context, spike domain.MomentumSpike) (int, error) {
+func (w *WebhookWorker) NotifyMomentumSpike(ctx context.Context, spike *domain.MomentumSpike) (int, error) {
 	select {
 	case w.spikeChan <- spike:
 		w.logger.Debug("spike queued for notification",
@@ -152,7 +152,7 @@ func (w *WebhookWorker) runWorker(ctx context.Context, workerID int) {
 }
 
 // dispatchSpike sends webhook notifications for a spike.
-func (w *WebhookWorker) dispatchSpike(ctx context.Context, spike domain.MomentumSpike, workerID int) {
+func (w *WebhookWorker) dispatchSpike(ctx context.Context, spike *domain.MomentumSpike, workerID int) {
 	// get subscriptions for this community
 	subs, err := w.subRepo.FindByCommunity(ctx, spike.CommunityID)
 	if err != nil {
