@@ -100,7 +100,7 @@ func TestCalculateMomentum_NegativeEventSubtracts(t *testing.T) {
 
 	result := CalculateMomentum(&input)
 
-	// expected: 2.0 - 1.0 = 1.0
+	// positive (2.0) minus negative (1.0) should equal 1.0
 	if result.Score.Value() != 1.0 {
 		t.Errorf("expected score 1.0, got %f", result.Score.Value())
 	}
