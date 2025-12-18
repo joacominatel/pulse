@@ -86,7 +86,8 @@ func (m *Migrator) loadMigrations() ([]Migration, error) {
 
 		// parse filename: 000001_description.up.sql or 000001_description.down.sql
 		var version, description, direction string
-		if strings.HasSuffix(name, ".up.sql") {
+		switch {
+		case strings.HasSuffix(name, ".up.sql"):
 			direction = "up"
 			base := strings.TrimSuffix(name, ".up.sql")
 			parts := strings.SplitN(base, "_", 2)
@@ -95,7 +96,7 @@ func (m *Migrator) loadMigrations() ([]Migration, error) {
 			}
 			version = parts[0]
 			description = parts[1]
-		} else if strings.HasSuffix(name, ".down.sql") {
+		case strings.HasSuffix(name, ".down.sql"):
 			direction = "down"
 			base := strings.TrimSuffix(name, ".down.sql")
 			parts := strings.SplitN(base, "_", 2)
@@ -104,7 +105,7 @@ func (m *Migrator) loadMigrations() ([]Migration, error) {
 			}
 			version = parts[0]
 			description = parts[1]
-		} else {
+		default:
 			continue
 		}
 
@@ -168,29 +169,19 @@ func (m *Migrator) applyMigration(ctx context.Context, migration Migration) (boo
 	if err != nil {
 		return false, fmt.Errorf("starting transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// execute migration SQL
 	if _, err := tx.Exec(ctx, migration.UpSQL); err != nil {
 		return false, fmt.Errorf("executing migration: %w", err)
 	}
 
-	// record migration (skip for first migration as table might not exist until after execution)
-	if migration.Version == "000001" {
-		// re-execute after table is created
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO pulse.schema_migrations (version, description) VALUES ($1, $2)`,
-			migration.Version, migration.Description,
-		); err != nil {
-			return false, fmt.Errorf("recording migration: %w", err)
-		}
-	} else {
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO pulse.schema_migrations (version, description) VALUES ($1, $2)`,
-			migration.Version, migration.Description,
-		); err != nil {
-			return false, fmt.Errorf("recording migration: %w", err)
-		}
+	// record migration in schema_migrations table
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO pulse.schema_migrations (version, description) VALUES ($1, $2)`,
+		migration.Version, migration.Description,
+	); err != nil {
+		return false, fmt.Errorf("recording migration: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
