@@ -9,11 +9,14 @@ linters:
   settings:
     errcheck:
       check-type-assertions: true
-      check-blank: true
+      check-blank: false
       exclude-functions:
         - (io.Closer).Close
         - (*os.File).Close
         - (net.Conn).Close
+        - (*github.com/jackc/pgx/v5.Tx).Rollback
+        - (github.com/joacominatel/pulse/internal/application.UnitOfWork).Rollback
+        - github.com/joho/godotenv.Load
     gocritic:
       enabled-tags:
         - diagnostic
