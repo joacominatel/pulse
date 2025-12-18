@@ -158,11 +158,12 @@ func run(logger *logging.Logger) error {
 	server := api.NewServer(serverConfig, logger)
 
 	// register routes
-	api.RegisterRoutes(server.Echo(), api.RouterConfig{
+	api.RegisterRoutes(server.Echo(), &api.RouterConfig{
 		IngestEventUseCase:       ingestEventUseCase,
 		CalculateMomentumUseCase: calculateMomentumUseCase,
 		CreateCommunityUseCase:   createCommunityUseCase,
 		CommunityRepo:            communityRepo,
+		WebhookSubscriptionRepo:  webhookSubRepo,
 		JWTValidator:             jwtValidator,
 		Logger:                   logger,
 		Metrics:                  appMetrics,
