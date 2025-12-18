@@ -24,17 +24,23 @@ type IngestEventOutput struct {
 	EventType   string
 	Weight      float64
 	Accepted    bool
+	Queued      bool // true if event was queued for async processing
 }
 
 // IngestEventUseCase handles the ingestion of activity events.
+// supports both synchronous (direct save) and asynchronous (buffered channel) modes.
 type IngestEventUseCase struct {
 	eventRepo     domain.ActivityEventRepository
 	communityRepo domain.CommunityRepository
 	userRepo      domain.UserRepository
 	logger        *logging.Logger
+
+	// async mode: if eventChan is set, events are pushed to the channel
+	// instead of being saved directly to the repository
+	eventChan chan<- *domain.ActivityEvent
 }
 
-// NewIngestEventUseCase creates a new IngestEventUseCase.
+// NewIngestEventUseCase creates a new IngestEventUseCase in synchronous mode.
 func NewIngestEventUseCase(
 	eventRepo domain.ActivityEventRepository,
 	communityRepo domain.CommunityRepository,
@@ -47,6 +53,14 @@ func NewIngestEventUseCase(
 		userRepo:      userRepo,
 		logger:        logger.WithComponent("ingest_event"),
 	}
+}
+
+// WithEventChannel sets the async event channel.
+// when set, events will be pushed to the channel instead of saved directly.
+// returns the use case for chaining.
+func (uc *IngestEventUseCase) WithEventChannel(ch chan<- *domain.ActivityEvent) *IngestEventUseCase {
+	uc.eventChan = ch
+	return uc
 }
 
 // Execute ingests a new activity event.
@@ -145,7 +159,34 @@ func (uc *IngestEventUseCase) Execute(ctx context.Context, input IngestEventInpu
 		return nil, fmt.Errorf("creating event: %w", err)
 	}
 
-	// persist the event
+	// async mode: push to channel (non-blocking with select)
+	if uc.eventChan != nil {
+		select {
+		case uc.eventChan <- event:
+			uc.logger.Debug("event queued",
+				"event_id", event.ID().String(),
+				"community_id", communityID.String(),
+				"event_type", eventType.String(),
+			)
+			return &IngestEventOutput{
+				EventID:     event.ID().String(),
+				CommunityID: communityID.String(),
+				EventType:   eventType.String(),
+				Weight:      weight.Value(),
+				Accepted:    true,
+				Queued:      true,
+			}, nil
+		default:
+			// channel full, log warning but don't block
+			uc.logger.Warn("event buffer full, dropping event",
+				"event_id", event.ID().String(),
+				"community_id", communityID.String(),
+			)
+			return nil, fmt.Errorf("event buffer full, try again later")
+		}
+	}
+
+	// sync mode: persist directly
 	if err := uc.eventRepo.Save(ctx, event); err != nil {
 		uc.logger.Error("event save failed",
 			"community_id", communityID.String(),
@@ -169,5 +210,6 @@ func (uc *IngestEventUseCase) Execute(ctx context.Context, input IngestEventInpu
 		EventType:   eventType.String(),
 		Weight:      weight.Value(),
 		Accepted:    true,
+		Queued:      false,
 	}, nil
 }
