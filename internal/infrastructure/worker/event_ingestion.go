@@ -9,6 +9,13 @@ import (
 	"github.com/joacominatel/pulse/internal/infrastructure/logging"
 )
 
+// MetricsRecorder abstracts prometheus metrics for the ingestion worker.
+// keeps worker decoupled from metrics package.
+type MetricsRecorder interface {
+	RecordEventIngested(communityID, eventType string)
+	SetBufferSize(size int)
+}
+
 // EventIngestionWorkerConfig holds configuration for the ingestion worker.
 type EventIngestionWorkerConfig struct {
 	// BufferSize is the size of the event channel buffer.
@@ -42,6 +49,7 @@ type EventIngestionWorker struct {
 	repo      domain.ActivityEventRepository
 	config    EventIngestionWorkerConfig
 	logger    *logging.Logger
+	metrics   MetricsRecorder
 
 	wg       sync.WaitGroup
 	stopOnce sync.Once
@@ -61,6 +69,12 @@ func NewEventIngestionWorker(
 		logger:    logger.WithComponent("event_ingestion_worker"),
 		stopped:   make(chan struct{}),
 	}
+}
+
+// WithMetrics sets the metrics recorder for observability.
+func (w *EventIngestionWorker) WithMetrics(m MetricsRecorder) *EventIngestionWorker {
+	w.metrics = m
+	return w
 }
 
 // EventChannel returns the channel for submitting events.
@@ -178,6 +192,15 @@ func (w *EventIngestionWorker) flushBatch(ctx context.Context, batch []*domain.A
 			"duration_ms", duration.Milliseconds(),
 		)
 		return
+	}
+
+	// record metrics for successfully saved events
+	if w.metrics != nil {
+		for _, event := range batch {
+			w.metrics.RecordEventIngested(event.CommunityID().String(), string(event.EventType()))
+		}
+		// update buffer size after flush
+		w.metrics.SetBufferSize(len(w.eventChan))
 	}
 
 	w.logger.Debug("batch flushed",
