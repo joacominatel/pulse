@@ -36,7 +36,7 @@ func NewCommunityExistsCache(repo domain.CommunityRepository, ttl time.Duration)
 // CheckActive checks if a community exists and is active.
 // returns (exists, isActive, error).
 // uses cache if available, otherwise queries the database.
-func (c *CommunityExistsCache) CheckActive(ctx context.Context, id domain.CommunityID) (exists bool, isActive bool, err error) {
+func (c *CommunityExistsCache) CheckActive(ctx context.Context, id domain.CommunityID) (exists, isActive bool, err error) {
 	idStr := id.String()
 
 	// fast path: check cache
