@@ -1,14 +1,11 @@
 # golangci-lint configuration for strict enforcement
 # https://golangci-lint.run/usage/configuration/
 
-version: "2"
-
 run:
   timeout: 5m
   tests: true
 
 linters:
-  default: standard
   enable:
     # catch common mistakes
     - errcheck        # unchecked errors
@@ -75,8 +72,3 @@ issues:
       linters:
         - gocritic
       text: "magic"
-
-formatters:
-  enable:
-    - gofmt
-    - goimports
