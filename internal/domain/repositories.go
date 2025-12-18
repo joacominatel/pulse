@@ -57,6 +57,10 @@ type ActivityEventRepository interface {
 	// events are append-only, so no update method.
 	Save(ctx context.Context, event *ActivityEvent) error
 
+	// SaveBatch persists multiple activity events in a single transaction.
+	// more efficient than individual saves for bulk operations.
+	SaveBatch(ctx context.Context, events []*ActivityEvent) error
+
 	// FindByCommunity retrieves events for a community within a time window.
 	// ordered by created_at descending (newest first).
 	FindByCommunity(ctx context.Context, communityID CommunityID, since time.Time, limit int) ([]*ActivityEvent, error)
