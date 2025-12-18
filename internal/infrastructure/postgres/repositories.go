@@ -220,6 +220,59 @@ func (r *CommunityRepository) Exists(ctx context.Context, id domain.CommunityID)
 	return exists, nil
 }
 
+// FindByIDs retrieves multiple communities by their IDs.
+// maintains the order of the input IDs.
+func (r *CommunityRepository) FindByIDs(ctx context.Context, ids []domain.CommunityID) ([]*domain.Community, error) {
+	if len(ids) == 0 {
+		return []*domain.Community{}, nil
+	}
+
+	// convert to UUIDs for query
+	uuids := make([]string, len(ids))
+	for i, id := range ids {
+		uuids[i] = id.String()
+	}
+
+	// query using ANY with array
+	const query = `
+		SELECT id, slug, name, description, creator_id, avatar_url, is_active,
+		       current_momentum, momentum_updated_at, created_at, updated_at
+		FROM pulse.communities
+		WHERE id = ANY($1)
+	`
+
+	rows, err := r.pool.Query(ctx, query, uuids)
+	if err != nil {
+		return nil, fmt.Errorf("finding communities by ids: %w", err)
+	}
+	defer rows.Close()
+
+	// collect results in a map for reordering
+	communityMap := make(map[string]*domain.Community)
+	for rows.Next() {
+		community, err := r.scanCommunityFromRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		communityMap[community.ID().String()] = community
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating communities: %w", err)
+	}
+
+	// reorder results to match input order
+	communities := make([]*domain.Community, 0, len(ids))
+	for _, id := range ids {
+		if community, ok := communityMap[id.String()]; ok {
+			communities = append(communities, community)
+		}
+		// silently skip missing communities (could be deactivated/deleted)
+	}
+
+	return communities, nil
+}
+
 // ListByMomentum returns active communities ordered by momentum.
 func (r *CommunityRepository) ListByMomentum(ctx context.Context, limit, offset int) ([]*domain.Community, error) {
 	const query = `
