@@ -36,7 +36,7 @@ func RunInTransaction(ctx context.Context, uow UnitOfWork, fn func(ctx context.C
 	}
 
 	// always try to rollback on exit - it's a no-op if already committed
-	defer uow.Rollback(txCtx)
+	defer func() { _ = uow.Rollback(txCtx) }()
 
 	if err := fn(txCtx); err != nil {
 		return err
