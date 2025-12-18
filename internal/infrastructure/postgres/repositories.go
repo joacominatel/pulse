@@ -469,6 +469,61 @@ func (r *ActivityEventRepository) Save(ctx context.Context, event *domain.Activi
 	return nil
 }
 
+// SaveBatch persists multiple activity events in a single transaction.
+// uses a multi-row INSERT for efficiency.
+func (r *ActivityEventRepository) SaveBatch(ctx context.Context, events []*domain.ActivityEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+
+	// use a transaction for atomicity
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// batch insert using CopyFrom for maximum efficiency
+	rows := make([][]any, len(events))
+	for i, event := range events {
+		var userID any
+		if event.UserID() != nil {
+			userID = event.UserID().UUID()
+		}
+
+		metadataJSON, err := event.MetadataJSON()
+		if err != nil {
+			return fmt.Errorf("serializing metadata for event %s: %w", event.ID().String(), err)
+		}
+
+		rows[i] = []any{
+			event.ID().UUID(),
+			event.CommunityID().UUID(),
+			userID,
+			event.EventType().String(),
+			event.Weight().Value(),
+			string(metadataJSON),
+			event.CreatedAt(),
+		}
+	}
+
+	_, err = tx.CopyFrom(
+		ctx,
+		pgx.Identifier{"pulse", "activity_events"},
+		[]string{"id", "community_id", "user_id", "event_type", "weight", "metadata", "created_at"},
+		pgx.CopyFromRows(rows),
+	)
+	if err != nil {
+		return fmt.Errorf("batch inserting events: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("committing transaction: %w", err)
+	}
+
+	return nil
+}
+
 // FindByCommunity retrieves events for a community within a time window.
 func (r *ActivityEventRepository) FindByCommunity(ctx context.Context, communityID domain.CommunityID, since time.Time, limit int) ([]*domain.ActivityEvent, error) {
 	const query = `
