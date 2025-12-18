@@ -86,6 +86,12 @@ func run(logger *logging.Logger) error {
 		logger,
 	)
 
+	createCommunityUseCase := application.NewCreateCommunityUseCase(
+		communityRepo,
+		userRepo,
+		logger,
+	)
+
 	// initialize http server
 	serverConfig := api.DefaultServerConfig()
 	if port := os.Getenv("PORT"); port != "" {
@@ -98,6 +104,7 @@ func run(logger *logging.Logger) error {
 	api.RegisterRoutes(server.Echo(), api.RouterConfig{
 		IngestEventUseCase:       ingestEventUseCase,
 		CalculateMomentumUseCase: calculateMomentumUseCase,
+		CreateCommunityUseCase:   createCommunityUseCase,
 		CommunityRepo:            communityRepo,
 		JWTValidator:             jwtValidator,
 		Logger:                   logger,
