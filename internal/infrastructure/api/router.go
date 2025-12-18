@@ -4,6 +4,8 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/joacominatel/pulse/internal/application"
+	"github.com/joacominatel/pulse/internal/domain"
+	"github.com/joacominatel/pulse/internal/infrastructure/auth"
 	"github.com/joacominatel/pulse/internal/infrastructure/logging"
 )
 
@@ -11,6 +13,8 @@ import (
 type RouterConfig struct {
 	IngestEventUseCase       *application.IngestEventUseCase
 	CalculateMomentumUseCase *application.CalculateMomentumUseCase
+	CommunityRepo            domain.CommunityRepository
+	JWTValidator             *auth.JWTValidator
 	Logger                   *logging.Logger
 }
 
@@ -24,11 +28,13 @@ func RegisterRoutes(e *echo.Echo, config RouterConfig) {
 	v1 := e.Group("/api/v1")
 
 	// configure auth middleware with public routes skipper
-	authConfig := DefaultAuthConfig()
-	authConfig.Skipper = PublicRoutesSkipper(
-		"/health",
-		"/ready",
-	)
+	authConfig := AuthConfig{
+		JWTValidator: config.JWTValidator,
+		Skipper: PublicRoutesSkipper(
+			"/health",
+			"/ready",
+		),
+	}
 
 	// apply optional auth to allow both authenticated and anonymous requests
 	// individual handlers decide what to do with the user context
@@ -43,6 +49,11 @@ func RegisterRoutes(e *echo.Echo, config RouterConfig) {
 	if config.CalculateMomentumUseCase != nil {
 		momentumHandler := NewMomentumHandler(config.CalculateMomentumUseCase)
 		momentumHandler.RegisterRoutes(v1)
+	}
+
+	if config.CommunityRepo != nil {
+		communityHandler := NewCommunityHandler(config.CommunityRepo)
+		communityHandler.RegisterRoutes(v1)
 	}
 
 	config.Logger.Info("api routes registered",
