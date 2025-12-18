@@ -15,6 +15,7 @@ import (
 	"github.com/joacominatel/pulse/internal/infrastructure/config"
 	"github.com/joacominatel/pulse/internal/infrastructure/database"
 	"github.com/joacominatel/pulse/internal/infrastructure/logging"
+	"github.com/joacominatel/pulse/internal/infrastructure/metrics"
 	"github.com/joacominatel/pulse/internal/infrastructure/postgres"
 	"github.com/joacominatel/pulse/internal/infrastructure/worker"
 )
@@ -65,6 +66,10 @@ func run(logger *logging.Logger) error {
 
 	logger.Info("pulse infrastructure ready", "schema", conn.Schema())
 
+	// initialize prometheus metrics
+	appMetrics := metrics.New()
+	logger.Info("prometheus metrics initialized")
+
 	// initialize jwt validator
 	jwtValidator := auth.NewJWTValidator(cfg.Auth.JWTSecret)
 
@@ -98,7 +103,8 @@ func run(logger *logging.Logger) error {
 
 	// initialize event ingestion worker (async buffer pattern)
 	ingestionWorkerConfig := worker.DefaultEventIngestionConfig()
-	ingestionWorker := worker.NewEventIngestionWorker(eventRepo, ingestionWorkerConfig, logger)
+	ingestionWorker := worker.NewEventIngestionWorker(eventRepo, ingestionWorkerConfig, logger).
+		WithMetrics(appMetrics)
 
 	// start the ingestion worker before accepting requests
 	workerCtx, workerCancel := context.WithCancel(context.Background())
@@ -151,10 +157,11 @@ func run(logger *logging.Logger) error {
 		CommunityRepo:            communityRepo,
 		JWTValidator:             jwtValidator,
 		Logger:                   logger,
+		Metrics:                  appMetrics,
 	})
 
 	// start background momentum worker
-	go runMomentumWorker(workerCtx, calculateMomentumUseCase, logger)
+	go runMomentumWorker(workerCtx, calculateMomentumUseCase, appMetrics, logger)
 
 	// start server in goroutine
 	go func() {
@@ -191,14 +198,14 @@ func run(logger *logging.Logger) error {
 
 // runMomentumWorker runs the momentum calculation in the background
 // every momentumCalculationInterval until context is cancelled
-func runMomentumWorker(ctx context.Context, useCase *application.CalculateMomentumUseCase, logger *logging.Logger) {
+func runMomentumWorker(ctx context.Context, useCase *application.CalculateMomentumUseCase, appMetrics *metrics.Metrics, logger *logging.Logger) {
 	logger.Info("momentum worker started", "interval", momentumCalculationInterval.String())
 
 	ticker := time.NewTicker(momentumCalculationInterval)
 	defer ticker.Stop()
 
 	// run immediately on startup
-	runMomentumCalculation(ctx, useCase, logger)
+	runMomentumCalculation(ctx, useCase, appMetrics, logger)
 
 	for {
 		select {
@@ -206,18 +213,23 @@ func runMomentumWorker(ctx context.Context, useCase *application.CalculateMoment
 			logger.Info("momentum worker stopping")
 			return
 		case <-ticker.C:
-			runMomentumCalculation(ctx, useCase, logger)
+			runMomentumCalculation(ctx, useCase, appMetrics, logger)
 		}
 	}
 }
 
 // runMomentumCalculation executes a single momentum calculation cycle
-func runMomentumCalculation(ctx context.Context, useCase *application.CalculateMomentumUseCase, logger *logging.Logger) {
+func runMomentumCalculation(ctx context.Context, useCase *application.CalculateMomentumUseCase, appMetrics *metrics.Metrics, logger *logging.Logger) {
 	start := time.Now()
 	result, err := useCase.ExecuteAll(ctx, application.CalculateAllInput{
 		Limit: 0, // process all communities
 	})
 	duration := time.Since(start)
+
+	// record metric regardless of success/failure
+	if appMetrics != nil {
+		appMetrics.RecordMomentumCalculation(duration.Seconds())
+	}
 
 	if err != nil {
 		logger.Error("momentum calculation failed",
