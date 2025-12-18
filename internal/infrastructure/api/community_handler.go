@@ -1,30 +1,38 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/joacominatel/pulse/internal/application"
 	"github.com/joacominatel/pulse/internal/domain"
 )
 
 // CommunityHandler handles community-related HTTP endpoints.
 type CommunityHandler struct {
-	repo domain.CommunityRepository
+	repo                   domain.CommunityRepository
+	createCommunityUseCase *application.CreateCommunityUseCase
 }
 
 // NewCommunityHandler creates a new CommunityHandler.
-func NewCommunityHandler(repo domain.CommunityRepository) *CommunityHandler {
+func NewCommunityHandler(
+	repo domain.CommunityRepository,
+	createCommunityUseCase *application.CreateCommunityUseCase,
+) *CommunityHandler {
 	return &CommunityHandler{
-		repo: repo,
+		repo:                   repo,
+		createCommunityUseCase: createCommunityUseCase,
 	}
 }
 
 // RegisterRoutes registers community routes on the given group.
 func (h *CommunityHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/communities", h.ListByMomentum)
+	g.POST("/communities", h.Create)
 }
 
 // communityResponse is the API representation of a community.
@@ -46,6 +54,89 @@ type listCommunitiesResponse struct {
 	Communities []communityResponse `json:"communities"`
 	Limit       int                 `json:"limit"`
 	Offset      int                 `json:"offset"`
+}
+
+// createCommunityRequest is the API request for creating a community.
+type createCommunityRequest struct {
+	Slug        string `json:"slug"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// createCommunityResponse is the API response for creating a community.
+type createCommunityResponse struct {
+	ID        string `json:"id"`
+	Slug      string `json:"slug"`
+	Name      string `json:"name"`
+	CreatorID string `json:"creator_id"`
+}
+
+// Create creates a new community.
+// POST /api/v1/communities
+// requires authentication - creator is taken from JWT claims, NOT request body
+func (h *CommunityHandler) Create(c echo.Context) error {
+	// get authenticated user from context (set by auth middleware)
+	creatorExternalID := GetUserExternalID(c)
+	if creatorExternalID == "" {
+		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
+	}
+
+	// parse request body
+	var req createCommunityRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	// validate required fields
+	if req.Slug == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "slug is required")
+	}
+	if req.Name == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "name is required")
+	}
+
+	// execute use case
+	output, err := h.createCommunityUseCase.Execute(c.Request().Context(), application.CreateCommunityInput{
+		Slug:              req.Slug,
+		Name:              req.Name,
+		Description:       req.Description,
+		CreatorExternalID: creatorExternalID,
+	})
+
+	if err != nil {
+		return mapCreateCommunityError(err)
+	}
+
+	return c.JSON(http.StatusCreated, createCommunityResponse{
+		ID:        output.CommunityID,
+		Slug:      output.Slug,
+		Name:      output.Name,
+		CreatorID: output.CreatorID,
+	})
+}
+
+// mapCreateCommunityError converts use case errors to HTTP errors
+func mapCreateCommunityError(err error) *echo.HTTPError {
+	switch {
+	case errors.Is(err, application.ErrCreatorNotFound):
+		return echo.NewHTTPError(http.StatusNotFound, "user profile not found - please complete signup first")
+	case errors.Is(err, application.ErrSlugAlreadyExists):
+		return echo.NewHTTPError(http.StatusConflict, "community with this slug already exists")
+	case errors.Is(err, domain.ErrSlugEmpty):
+		return echo.NewHTTPError(http.StatusBadRequest, "slug cannot be empty")
+	case errors.Is(err, domain.ErrSlugTooShort):
+		return echo.NewHTTPError(http.StatusBadRequest, "slug must be at least 3 characters")
+	case errors.Is(err, domain.ErrSlugTooLong):
+		return echo.NewHTTPError(http.StatusBadRequest, "slug must be at most 100 characters")
+	case errors.Is(err, domain.ErrSlugInvalid):
+		return echo.NewHTTPError(http.StatusBadRequest, "slug must contain only lowercase letters, numbers, and hyphens")
+	case errors.Is(err, domain.ErrCommunityNameEmpty):
+		return echo.NewHTTPError(http.StatusBadRequest, "name cannot be empty")
+	case errors.Is(err, domain.ErrCommunityNameTooLong):
+		return echo.NewHTTPError(http.StatusBadRequest, "name must be at most 255 characters")
+	default:
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create community")
+	}
 }
 
 // ListByMomentum returns communities ranked by current momentum.
