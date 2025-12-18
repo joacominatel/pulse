@@ -43,7 +43,7 @@ func (l *Logger) WithContext(ctx context.Context) *Logger {
 // useful for tracing which part of the system is logging.
 func (l *Logger) WithComponent(name string) *Logger {
 	return &Logger{
-		Logger: l.Logger.With("component", name),
+		Logger: l.With("component", name),
 	}
 }
 
