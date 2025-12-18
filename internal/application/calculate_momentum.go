@@ -53,10 +53,17 @@ type CalculateMomentumOutput struct {
 	WasUpdated  bool
 }
 
+// LeaderboardUpdater abstracts the cache layer for momentum rankings.
+// allows the use case to remain decoupled from redis specifics.
+type LeaderboardUpdater interface {
+	UpdateLeaderboardScore(ctx context.Context, communityID string, momentum float64) error
+}
+
 // CalculateMomentumUseCase handles momentum calculation for communities.
 type CalculateMomentumUseCase struct {
 	eventRepo     domain.ActivityEventRepository
 	communityRepo domain.CommunityRepository
+	leaderboard   LeaderboardUpdater
 	config        MomentumConfig
 	timeProvider  TimeProvider
 	logger        *logging.Logger
@@ -81,6 +88,13 @@ func NewCalculateMomentumUseCase(
 // WithTimeProvider sets a custom time provider for testing.
 func (uc *CalculateMomentumUseCase) WithTimeProvider(tp TimeProvider) *CalculateMomentumUseCase {
 	uc.timeProvider = tp
+	return uc
+}
+
+// WithLeaderboard sets the leaderboard updater (redis cache).
+// when set, momentum updates are also pushed to the cache.
+func (uc *CalculateMomentumUseCase) WithLeaderboard(lb LeaderboardUpdater) *CalculateMomentumUseCase {
+	uc.leaderboard = lb
 	return uc
 }
 
@@ -136,7 +150,7 @@ func (uc *CalculateMomentumUseCase) Execute(ctx context.Context, input Calculate
 	// using simpler model with pre-aggregated weights from db
 	newMomentum := domain.SimpleMomentum(weightedSum, uc.config.DecayFactor)
 
-	// update community momentum
+	// update community momentum in postgres
 	if err := uc.communityRepo.UpdateMomentum(ctx, communityID, newMomentum); err != nil {
 		uc.logger.Error("momentum update failed",
 			"community_id", communityID.String(),
@@ -147,12 +161,25 @@ func (uc *CalculateMomentumUseCase) Execute(ctx context.Context, input Calculate
 		return nil, fmt.Errorf("updating momentum: %w", err)
 	}
 
+	// sync to redis leaderboard (best-effort, don't fail on cache errors)
+	if uc.leaderboard != nil {
+		if err := uc.leaderboard.UpdateLeaderboardScore(ctx, communityID.String(), newMomentum.Value()); err != nil {
+			// log but don't fail - postgres is the source of truth
+			uc.logger.Warn("leaderboard sync failed",
+				"community_id", communityID.String(),
+				"momentum", newMomentum.Value(),
+				"error", err.Error(),
+			)
+		}
+	}
+
 	uc.logger.Info("momentum calculated",
 		"community_id", communityID.String(),
 		"old_momentum", oldMomentum,
 		"new_momentum", newMomentum.Value(),
 		"event_count", eventCount,
 		"time_window", uc.config.TimeWindow.String(),
+		"leaderboard_enabled", uc.leaderboard != nil,
 		"outcome", "updated",
 	)
 
