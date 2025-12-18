@@ -116,5 +116,15 @@ func (r *CommunityRepositoryWithCache) ListByMomentum(ctx context.Context, limit
 		return nil, err
 	}
 
+	if len(communities) != len(ids) {
+		r.logger.Warn("leaderboard cache returned stale community ids, falling back to postgres",
+			"expected", len(ids),
+			"received", len(communities),
+			"limit", limit,
+			"offset", offset,
+		)
+		return r.repo.ListByMomentum(ctx, limit, offset)
+	}
+
 	return communities, nil
 }
