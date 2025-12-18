@@ -29,6 +29,10 @@ type CommunityRepository interface {
 	// FindByID retrieves a community by its ID.
 	FindByID(ctx context.Context, id CommunityID) (*Community, error)
 
+	// FindByIDs retrieves multiple communities by their IDs.
+	// maintains the order of the input IDs.
+	FindByIDs(ctx context.Context, ids []CommunityID) ([]*Community, error)
+
 	// FindBySlug retrieves a community by its URL-friendly slug.
 	FindBySlug(ctx context.Context, slug Slug) (*Community, error)
 
