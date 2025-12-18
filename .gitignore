@@ -21,3 +21,4 @@ example*/
 # Scripts
 __pycache__/
 *.pyc
+.golangci.bck.yml
