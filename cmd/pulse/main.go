@@ -44,7 +44,7 @@ func run(logger *logging.Logger) error {
 	}
 
 	// establish database connection
-	conn, err := database.New(cfg.Database, logger)
+	conn, err := database.New(&cfg.Database, logger)
 	if err != nil {
 		return err
 	}
