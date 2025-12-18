@@ -13,6 +13,7 @@ import (
 type RouterConfig struct {
 	IngestEventUseCase       *application.IngestEventUseCase
 	CalculateMomentumUseCase *application.CalculateMomentumUseCase
+	CreateCommunityUseCase   *application.CreateCommunityUseCase
 	CommunityRepo            domain.CommunityRepository
 	JWTValidator             *auth.JWTValidator
 	Logger                   *logging.Logger
@@ -52,7 +53,7 @@ func RegisterRoutes(e *echo.Echo, config RouterConfig) {
 	}
 
 	if config.CommunityRepo != nil {
-		communityHandler := NewCommunityHandler(config.CommunityRepo)
+		communityHandler := NewCommunityHandler(config.CommunityRepo, config.CreateCommunityUseCase)
 		communityHandler.RegisterRoutes(v1)
 	}
 
