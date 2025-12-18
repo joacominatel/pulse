@@ -17,3 +17,7 @@ _DS_Store
 example*/
 *.log   
 *.out
+
+# Scripts
+__pycache__/
+*.pyc
