@@ -151,7 +151,7 @@ func NewSlug(s string) (Slug, error) {
 	}
 
 	for _, c := range s {
-		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
 			return Slug{}, ErrSlugInvalid
 		}
 	}
@@ -196,7 +196,7 @@ func NewUsername(s string) (Username, error) {
 	}
 
 	for _, c := range s {
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' {
 			return Username{}, ErrUsernameInvalid
 		}
 	}
