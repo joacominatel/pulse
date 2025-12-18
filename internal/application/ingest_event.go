@@ -30,14 +30,21 @@ type IngestEventOutput struct {
 // IngestEventUseCase handles the ingestion of activity events.
 // supports both synchronous (direct save) and asynchronous (buffered channel) modes.
 type IngestEventUseCase struct {
-	eventRepo     domain.ActivityEventRepository
-	communityRepo domain.CommunityRepository
-	userRepo      domain.UserRepository
-	logger        *logging.Logger
+	eventRepo        domain.ActivityEventRepository
+	communityRepo    domain.CommunityRepository
+	userRepo         domain.UserRepository
+	communityChecker CommunityChecker
+	logger           *logging.Logger
 
 	// async mode: if eventChan is set, events are pushed to the channel
 	// instead of being saved directly to the repository
 	eventChan chan<- *domain.ActivityEvent
+}
+
+// CommunityChecker abstracts community existence checks.
+// allows using a cache instead of hitting the database every time.
+type CommunityChecker interface {
+	CheckActive(ctx context.Context, id domain.CommunityID) (exists bool, isActive bool, err error)
 }
 
 // NewIngestEventUseCase creates a new IngestEventUseCase in synchronous mode.
@@ -63,6 +70,13 @@ func (uc *IngestEventUseCase) WithEventChannel(ch chan<- *domain.ActivityEvent) 
 	return uc
 }
 
+// WithCommunityChecker sets the community existence checker.
+// when set, uses the checker (typically a cache) instead of the repository.
+func (uc *IngestEventUseCase) WithCommunityChecker(checker CommunityChecker) *IngestEventUseCase {
+	uc.communityChecker = checker
+	return uc
+}
+
 // Execute ingests a new activity event.
 func (uc *IngestEventUseCase) Execute(ctx context.Context, input IngestEventInput) (*IngestEventOutput, error) {
 	// parse and validate community id
@@ -76,15 +90,39 @@ func (uc *IngestEventUseCase) Execute(ctx context.Context, input IngestEventInpu
 	}
 
 	// verify community exists and is active
-	community, err := uc.communityRepo.FindByID(ctx, communityID)
-	if err != nil {
-		uc.logger.Warn("event rejected: community lookup failed",
-			"community_id", communityID.String(),
-			"reason", err.Error(),
-		)
-		return nil, fmt.Errorf("community lookup: %w", err)
+	// use cache if available for high-throughput scenarios
+	var exists, isActive bool
+	if uc.communityChecker != nil {
+		exists, isActive, err = uc.communityChecker.CheckActive(ctx, communityID)
+		if err != nil {
+			uc.logger.Warn("event rejected: community check failed",
+				"community_id", communityID.String(),
+				"reason", err.Error(),
+			)
+			return nil, fmt.Errorf("community check: %w", err)
+		}
+	} else {
+		// fallback to direct repository lookup
+		community, err := uc.communityRepo.FindByID(ctx, communityID)
+		if err != nil {
+			uc.logger.Warn("event rejected: community lookup failed",
+				"community_id", communityID.String(),
+				"reason", err.Error(),
+			)
+			return nil, fmt.Errorf("community lookup: %w", err)
+		}
+		exists = true
+		isActive = community.IsActive()
 	}
-	if !community.IsActive() {
+
+	if !exists {
+		uc.logger.Warn("event rejected: community not found",
+			"community_id", communityID.String(),
+			"outcome", "rejected",
+		)
+		return nil, fmt.Errorf("community %s not found", communityID.String())
+	}
+	if !isActive {
 		uc.logger.Warn("event rejected: community inactive",
 			"community_id", communityID.String(),
 			"outcome", "rejected",
